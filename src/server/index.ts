@@ -1,6 +1,9 @@
 import express, { Request, Response } from 'express';
 import http from 'http';
 import os from 'os';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -10,6 +13,10 @@ import { solveMcq } from './aiSolver.js';
 import { SolverConfig } from '../shared/types.js';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.resolve(__dirname, '../../dist');
 
 const app = express();
 const server = http.createServer(app);
@@ -305,7 +312,19 @@ sessionManager.updateSession = (id: string, updates: any) => {
   return result;
 };
 
-const PORT = process.env.PORT || 3001;
+// Serve compiled production frontend if dist directory exists
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req: Request, res: Response, next: any) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/ws')) return next();
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+// In dev (npm run dev:all / server), use 3001 so Vite can use 3000. In production / cloud, default to 3000 or process.env.PORT.
+const isDevServer = process.env.npm_lifecycle_event === 'server' || process.env.npm_lifecycle_event === 'dev:all';
+const PORT = process.env.PORT || (isDevServer ? 3001 : 3000);
+
 server.listen(PORT, () => {
-  console.log(`⚡ MCQ Solver Server running on http://localhost:${PORT}`);
+  console.log(`⚡ MCQ Solver Server running on http://localhost:${PORT} (Mode: ${isDevServer ? 'Development' : 'Production/Standalone'})`);
 });

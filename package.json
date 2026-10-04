@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "start": "tsx src/server/index.ts",
     "server": "tsx watch src/server/index.ts",
     "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
     "test": "vitest run"
