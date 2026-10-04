@@ -124,6 +124,9 @@ app.post('/api/sessions/:id/trigger-capture', (req: Request, res: Response) => {
   res.json({ success: true, message: 'Shutter trigger sent to phone.' });
 });
 
+// Controller to discard stale asynchronous solver completions
+const activeSolveRequests = new Map<string, number>();
+
 // 6. Phone uploads captured photo
 app.post('/api/sessions/:id/capture', async (req: Request, res: Response) => {
   const session = sessionManager.getSession(req.params.id);
@@ -150,6 +153,9 @@ app.post('/api/sessions/:id/capture', async (req: Request, res: Response) => {
     return res.status(400).json({ error: validation.error });
   }
 
+  const requestId = Date.now();
+  activeSolveRequests.set(req.params.id, requestId);
+
   // Update status to ANALYZING
   sessionManager.updateSession(req.params.id, {
     status: 'ANALYZING',
@@ -170,20 +176,27 @@ app.post('/api/sessions/:id/capture', async (req: Request, res: Response) => {
       enableVerification: enableVerification ?? true,
     });
 
-    sessionManager.updateSession(req.params.id, {
-      status: 'ANSWER_READY',
-      currentResult: result,
-      lastError: undefined,
-    });
+    // Guard: Only commit if this request is still the newest one for this session!
+    if (activeSolveRequests.get(req.params.id) === requestId) {
+      sessionManager.updateSession(req.params.id, {
+        status: 'ANSWER_READY',
+        currentResult: result,
+        lastError: undefined,
+      });
+    } else {
+      console.log(`[Solver] Dropping stale result for session ${req.params.id} (superseded by newer capture)`);
+    }
   } catch (err: any) {
-    sessionManager.updateSession(req.params.id, {
-      status: 'ERROR',
-      lastError: err?.message || 'Failed to analyze MCQ image.',
-    });
+    if (activeSolveRequests.get(req.params.id) === requestId) {
+      sessionManager.updateSession(req.params.id, {
+        status: 'ERROR',
+        lastError: err?.message || 'Failed to analyze MCQ image.',
+      });
+    }
   }
 });
 
-// 6. Re-solve existing image
+// 7. Re-solve existing image
 app.post('/api/sessions/:id/resolve', async (req: Request, res: Response) => {
   const session = sessionManager.getSession(req.params.id);
   if (!session || !session.lastImageBase64) {
@@ -197,6 +210,9 @@ app.post('/api/sessions/:id/resolve', async (req: Request, res: Response) => {
   const groqKey2 = req.body.groqKey2 || config.groqKey2;
   const geminiKey = req.body.geminiKey || config.geminiKey;
   const enableVerification = req.body.enableVerification ?? config.enableVerification ?? true;
+
+  const requestId = Date.now();
+  activeSolveRequests.set(req.params.id, requestId);
 
   sessionManager.updateSession(req.params.id, {
     status: 'ANALYZING',
@@ -215,16 +231,20 @@ app.post('/api/sessions/:id/resolve', async (req: Request, res: Response) => {
       enableVerification: enableVerification ?? true,
     });
 
-    sessionManager.updateSession(req.params.id, {
-      status: 'ANSWER_READY',
-      currentResult: result,
-      lastError: undefined,
-    });
+    if (activeSolveRequests.get(req.params.id) === requestId) {
+      sessionManager.updateSession(req.params.id, {
+        status: 'ANSWER_READY',
+        currentResult: result,
+        lastError: undefined,
+      });
+    }
   } catch (err: any) {
-    sessionManager.updateSession(req.params.id, {
-      status: 'ERROR',
-      lastError: err?.message || 'Failed to re-solve question.',
-    });
+    if (activeSolveRequests.get(req.params.id) === requestId) {
+      sessionManager.updateSession(req.params.id, {
+        status: 'ERROR',
+        lastError: err?.message || 'Failed to re-solve question.',
+      });
+    }
   }
 });
 

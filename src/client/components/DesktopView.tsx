@@ -6,7 +6,7 @@ import { HistoryTable } from './HistoryTable.js';
 import { SettingsModal, AppSettings } from './SettingsModal.js';
 import { ManualOverrideModal } from './ManualOverrideModal.js';
 import { db } from '../lib/db.js';
-import { Sparkles, Settings, Plus, RotateCcw, AlertOctagon, Radio, Camera, Play, CheckCircle2, Smartphone } from 'lucide-react';
+import { Sparkles, Settings, Plus, RotateCcw, AlertOctagon, Radio, Camera, Play, CheckCircle2, Smartphone, RefreshCw } from 'lucide-react';
 
 export const DesktopView: React.FC = () => {
   const [session, setSession] = useState<SessionState | null>(null);
@@ -148,31 +148,31 @@ export const DesktopView: React.FC = () => {
 
   // Remote Shutter: Click Photo on Desktop -> sends signal to Phone
   const handleClickPhotoFromDesktop = useCallback(async () => {
-    if (!session?.id || isTriggering) return;
+    if (!session?.id || isTriggering || session?.status === 'ANALYZING') return;
 
     setIsTriggering(true);
     setCurrentOverride(null);
 
     const currentSettings = settingsRef.current;
 
-    // 1. Send WebSocket trigger to phone
+    // Send single trigger signal to prevent duplicate captures
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'REMOTE_TRIGGER_CAPTURE' }));
+    } else {
+      // Fallback to REST trigger only if WebSocket is disconnected
+      try {
+        await fetch(`/api/sessions/${session.id}/trigger-capture`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(currentSettings),
+        });
+      } catch (e) {
+        console.warn('REST trigger fallback warning:', e);
+      }
     }
 
-    // 2. Also send REST trigger for maximum reliability with latest settings
-    try {
-      await fetch(`/api/sessions/${session.id}/trigger-capture`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentSettings),
-      });
-    } catch (e) {
-      console.warn('REST trigger fallback warning:', e);
-    }
-
-    setTimeout(() => setIsTriggering(false), 500);
-  }, [session?.id, isTriggering]);
+    setTimeout(() => setIsTriggering(false), 1200);
+  }, [session?.id, session?.status, isTriggering]);
 
   // Spacebar keyboard shortcut for instant capture from desktop
   useEffect(() => {
@@ -380,15 +380,28 @@ export const DesktopView: React.FC = () => {
                 {/* PRIMARY DESKTOP SHUTTER BUTTON */}
                 <button
                   onClick={handleClickPhotoFromDesktop}
-                  disabled={isTriggering}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black text-sm transition-all shadow-lg shadow-emerald-500/30 ring-2 ring-emerald-500/30 disabled:opacity-50"
+                  disabled={isTriggering || session.status === 'ANALYZING'}
+                  className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all shadow-lg ${
+                    session.status === 'ANALYZING'
+                      ? 'bg-amber-500/80 text-slate-950 cursor-not-allowed opacity-90'
+                      : 'bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 shadow-emerald-500/30 ring-2 ring-emerald-500/30 disabled:opacity-50'
+                  }`}
                   title="Capture current MCQ from laptop screen"
                 >
-                  <Camera className="w-4 h-4" />
-                  <span>📸 CLICK PHOTO</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950/20 text-slate-900 font-mono ml-0.5">
-                    Space
-                  </span>
+                  {session.status === 'ANALYZING' ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>SOLVING MCQ...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-4 h-4" />
+                      <span>📸 CLICK PHOTO</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950/20 text-slate-900 font-mono ml-0.5">
+                        Space
+                      </span>
+                    </>
+                  )}
                 </button>
 
                 {session.currentResult && (

@@ -18,10 +18,17 @@ export const PhoneCameraView: React.FC<Props> = ({ sessionId }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  const lastCaptureTimeRef = useRef(0);
 
   // Capture current frame from continuous camera without stopping
   const doCapture = useCallback(async (source: 'desktop' | 'phone') => {
     if (!videoRef.current || cameraState !== 'ACTIVE' || isCapturing) return;
+
+    const now = Date.now();
+    if (now - lastCaptureTimeRef.current < 1500) {
+      return;
+    }
+    lastCaptureTimeRef.current = now;
 
     setIsCapturing(true);
     // Visual shutter flash effect

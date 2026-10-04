@@ -232,8 +232,6 @@ Return strict JSON format:
   // Candidate models supported on Groq
   const candidateModels = [
     'qwen/qwen3.8-27b',
-    'llama-3.2-11b-vision-instruct',
-    'llama-3.2-90b-vision-instruct',
   ];
 
   let lastErrorText = '';
@@ -270,6 +268,7 @@ Return strict JSON format:
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(12000), // Hard 12s timeout: never stall for 2 minutes!
       });
 
       if (!response.ok) {
@@ -359,6 +358,7 @@ DO NOT output any markdown ticks or explanation outside the JSON. Return raw val
         temperature: 0.1,
       },
     }),
+    signal: AbortSignal.timeout(12000), // Hard 12s timeout
   });
 
   if (!response.ok) {
@@ -450,6 +450,7 @@ Return strict JSON format:
       ],
       temperature: 0.1,
     }),
+    signal: AbortSignal.timeout(12000), // Hard 12s timeout
   });
 
   if (!response.ok) {
@@ -517,6 +518,7 @@ D: ${options.D || ''}`;
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { response_mime_type: 'application/json', temperature: 0.0 },
       }),
+      signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return null;
     const j = await res.json();
@@ -536,6 +538,7 @@ D: ${options.D || ''}`;
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.0,
       }),
+      signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return null;
     const j = await res.json();
